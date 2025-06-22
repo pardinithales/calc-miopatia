@@ -705,11 +705,6 @@ def health_compat():
     """Endpoint de compatibilidade - redireciona para /api/health"""
     return health()
 
-# Handler para Vercel
-def handler(event, context):
-    """Handler para AWS Lambda/Vercel"""
-    return app(event, context)
-
 # Para desenvolvimento local
 if __name__ == '__main__':
     app.run(debug=True, port=5000) 
