@@ -1,70 +1,25 @@
 from flask import Flask, render_template, request, jsonify
-import pandas as pd
+import pickle
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-import warnings
 import os
-warnings.filterwarnings('ignore')
 
 app = Flask(__name__)
 
-# Variáveis globais para o modelo e scaler
-rf_model = None
-scaler = None
+# Variáveis globais para o modelo
+model_data = None
 
-def load_and_train_model():
-    """Carrega os dados e treina o modelo"""
-    global rf_model, scaler
+def load_model():
+    """Carrega o modelo pré-treinado"""
+    global model_data
     
     try:
-        # Caminho para o arquivo CSV (ajustado para Vercel)
-        csv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'df.csv')
+        # Caminho para o arquivo do modelo
+        model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'model.pkl')
         
-        # Carregando o dataset  
-        df = pd.read_csv(csv_path)
+        with open(model_path, 'rb') as f:
+            model_data = pickle.load(f)
         
-        # Substituindo valores inválidos por NaN e convertendo para numérico
-        df.replace('#VALUE!', np.nan, inplace=True)
-        df = df.apply(pd.to_numeric, errors='coerce')
-        
-        # Remover linhas onde Diagnostico_Tipo é igual a 3 (distrofia miotônica)
-        df = df[df['Diagnostico_Tipo'] != 3]
-        
-        # Removendo colunas Delta e PacienteID
-        df.drop(columns=[col for col in df.columns if 'Delta' in col or col == 'PacienteID'], inplace=True)
-        
-        # Preenchendo valores ausentes com a mediana
-        df.fillna(df.median(), inplace=True)
-        
-        # Selecionando as colunas de interesse
-        columns_of_interest = [
-            'Maior_Cpk', 'Menor_Cpk', 'Maior_Lactato', 'Menor_Lactato',
-            'Dor_Presente', 'Mialgia_Status', 'Mialgia_Inicial_Tipo', 'Mialgia_Atual_Tipo',
-            'Fadiga_Status', 'Caibra_Status'
-        ]
-        df = df[columns_of_interest + ['Diagnostico_Tipo']]
-        
-        # Definindo características (X) e alvo (y)
-        X = df.drop('Diagnostico_Tipo', axis=1)
-        y = df['Diagnostico_Tipo']
-        
-        # Dividindo em treino e teste
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        
-        # Padronizando as características
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        
-        # Treinando o modelo
-        rf_model = RandomForestClassifier(
-            random_state=42,
-            class_weight='balanced',
-            n_estimators=100
-        )
-        rf_model.fit(X_train_scaled, y_train)
-        
+        print("Modelo carregado com sucesso!")
         return True
         
     except Exception as e:
@@ -73,21 +28,28 @@ def load_and_train_model():
 
 def predict_myopathy_type(data):
     """Faz a predição do tipo de miopatia"""
-    global rf_model, scaler
+    global model_data
     
-    if rf_model is None or scaler is None:
-        if not load_and_train_model():
+    if model_data is None:
+        if not load_model():
             raise Exception("Não foi possível carregar o modelo")
     
-    # Criar DataFrame com os dados do paciente
-    patient_data = pd.DataFrame([data])
+    # Ordenar os dados na ordem correta
+    feature_order = [
+        'Maior_Cpk', 'Menor_Cpk', 'Maior_Lactato', 'Menor_Lactato',
+        'Dor_Presente', 'Mialgia_Status', 'Mialgia_Inicial_Tipo', 'Mialgia_Atual_Tipo',
+        'Fadiga_Status', 'Caibra_Status'
+    ]
+    
+    # Criar array com os dados na ordem correta
+    patient_data = np.array([[data[feature] for feature in feature_order]])
     
     # Padronizar os dados
-    patient_data_scaled = scaler.transform(patient_data)
+    patient_data_scaled = model_data['scaler'].transform(patient_data)
     
     # Fazer predição
-    prediction = rf_model.predict(patient_data_scaled)
-    probability = rf_model.predict_proba(patient_data_scaled)
+    prediction = model_data['model'].predict(patient_data_scaled)
+    probability = model_data['model'].predict_proba(patient_data_scaled)
     
     # Mapear resultado
     myopathy_type = 'Estrutural' if prediction[0] == 1 else 'Metabólico'
@@ -131,8 +93,8 @@ def predict():
             'error': str(e)
         })
 
-# Inicializar o modelo na primeira chamada
-load_and_train_model()
+# Tentar carregar o modelo na inicialização
+load_model()
 
 # Para Vercel
 if __name__ == '__main__':
