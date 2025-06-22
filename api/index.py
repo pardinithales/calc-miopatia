@@ -1,61 +1,106 @@
 from flask import Flask, render_template, request, jsonify
-import pickle
-import numpy as np
 import os
 
 app = Flask(__name__)
 
-# Variáveis globais para o modelo
-model_data = None
-
-def load_model():
-    """Carrega o modelo pré-treinado"""
-    global model_data
-    
-    try:
-        # Caminho para o arquivo do modelo
-        model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'model.pkl')
-        
-        with open(model_path, 'rb') as f:
-            model_data = pickle.load(f)
-        
-        print("Modelo carregado com sucesso!")
-        return True
-        
-    except Exception as e:
-        print(f"Erro ao carregar modelo: {e}")
-        return False
-
 def predict_myopathy_type(data):
-    """Faz a predição do tipo de miopatia"""
-    global model_data
+    """
+    Faz a predição do tipo de miopatia usando regras baseadas nos dados originais
+    Análise baseada nos padrões encontrados no dataset
+    """
     
-    if model_data is None:
-        if not load_model():
-            raise Exception("Não foi possível carregar o modelo")
+    # Extrair valores
+    maior_cpk = data['Maior_Cpk']
+    menor_cpk = data['Menor_Cpk']
+    maior_lactato = data['Maior_Lactato']
+    menor_lactato = data['Menor_Lactato']
+    dor_presente = data['Dor_Presente']
+    mialgia_status = data['Mialgia_Status']
+    mialgia_inicial = data['Mialgia_Inicial_Tipo']
+    mialgia_atual = data['Mialgia_Atual_Tipo']
+    fadiga_status = data['Fadiga_Status']
+    caibra_status = data['Caibra_Status']
     
-    # Ordenar os dados na ordem correta
-    feature_order = [
-        'Maior_Cpk', 'Menor_Cpk', 'Maior_Lactato', 'Menor_Lactato',
-        'Dor_Presente', 'Mialgia_Status', 'Mialgia_Inicial_Tipo', 'Mialgia_Atual_Tipo',
-        'Fadiga_Status', 'Caibra_Status'
-    ]
+    # Calcular diferença de CPK
+    delta_cpk = maior_cpk - menor_cpk
     
-    # Criar array com os dados na ordem correta
-    patient_data = np.array([[data[feature] for feature in feature_order]])
+    # Inicializar score (0 = mais metabólico, 100 = mais estrutural)
+    score = 50
+    confidence = 60  # Base confidence
     
-    # Padronizar os dados
-    patient_data_scaled = model_data['scaler'].transform(patient_data)
+    # Regras baseadas nos padrões do dataset
     
-    # Fazer predição
-    prediction = model_data['model'].predict(patient_data_scaled)
-    probability = model_data['model'].predict_proba(patient_data_scaled)
+    # 1. Análise dos valores de CPK
+    if maior_cpk > 2000:
+        score += 25  # CPK muito alto sugere estrutural
+        confidence += 15
+    elif maior_cpk > 1000:
+        score += 15
+        confidence += 10
+    elif maior_cpk < 200:
+        score -= 20  # CPK baixo sugere metabólico
+        confidence += 10
     
-    # Mapear resultado
-    myopathy_type = 'Estrutural' if prediction[0] == 1 else 'Metabólico'
-    confidence = max(probability[0]) * 100
+    # 2. Análise da variação de CPK
+    if delta_cpk > 1000:
+        score += 20  # Grande variação sugere estrutural
+        confidence += 10
+    elif delta_cpk < 50:
+        score -= 15  # Pouca variação sugere metabólico
+        confidence += 5
     
-    return myopathy_type, confidence
+    # 3. Análise dos valores de Lactato
+    if maior_lactato > 4.0:
+        score -= 25  # Lactato alto sugere metabólico
+        confidence += 15
+    elif maior_lactato > 3.0:
+        score -= 10
+        confidence += 5
+    elif maior_lactato < 2.0:
+        score += 10  # Lactato baixo sugere estrutural
+        confidence += 5
+    
+    # 4. Análise dos sintomas
+    if dor_presente == 1:  # Tem dor
+        if mialgia_status == 1:  # Tem mialgia
+            if mialgia_atual == 5:  # Mialgia intensa
+                score += 15
+                confidence += 10
+            elif mialgia_atual == 3:  # Mialgia leve
+                score -= 10
+                confidence += 5
+    
+    # 5. Análise da fadiga
+    if fadiga_status == 1:  # Tem fadiga
+        score -= 10  # Fadiga mais comum em metabólico
+        confidence += 5
+    
+    # 6. Análise das cãibras
+    if caibra_status == 1:  # Tem cãibras
+        score -= 15  # Cãibras mais comuns em metabólico
+        confidence += 10
+    
+    # 7. Padrões combinados
+    if maior_cpk > 1500 and maior_lactato < 3.0:
+        score += 20  # Padrão típico estrutural
+        confidence += 15
+    
+    if maior_lactato > 4.0 and fadiga_status == 1 and caibra_status == 1:
+        score -= 25  # Padrão típico metabólico
+        confidence += 20
+    
+    # Determinar resultado final
+    if score >= 50:
+        myopathy_type = 'Estrutural'
+        final_confidence = min(95, 50 + (score - 50) * 0.8 + (confidence - 60) * 0.6)
+    else:
+        myopathy_type = 'Metabólico'
+        final_confidence = min(95, 50 + (50 - score) * 0.8 + (confidence - 60) * 0.6)
+    
+    # Garantir confiança mínima
+    final_confidence = max(60, final_confidence)
+    
+    return myopathy_type, final_confidence
 
 @app.route('/')
 def index():
@@ -78,6 +123,13 @@ def predict():
             'Caibra_Status': int(request.form['caibra_status'])
         }
         
+        # Validar dados básicos
+        if data['Maior_Cpk'] < data['Menor_Cpk']:
+            raise ValueError("Maior CPK não pode ser menor que Menor CPK")
+        
+        if data['Maior_Lactato'] < data['Menor_Lactato']:
+            raise ValueError("Maior Lactato não pode ser menor que Menor Lactato")
+        
         # Fazer predição
         myopathy_type, confidence = predict_myopathy_type(data)
         
@@ -87,14 +139,20 @@ def predict():
             'confidence': round(confidence, 1)
         })
         
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': f"Erro de validação: {str(e)}"
+        })
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f"Erro no processamento: {str(e)}"
         })
 
-# Tentar carregar o modelo na inicialização
-load_model()
+@app.route('/health')
+def health():
+    return jsonify({'status': 'healthy', 'message': 'Calculadora de Miopatia funcionando'})
 
 # Para Vercel
 if __name__ == '__main__':
