@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import os
+import traceback
 
 app = Flask(__name__)
 
@@ -202,11 +203,11 @@ def get_html_template():
         .spinner {
             width: 50px;
             height: 50px;
-            border: 4px solid #e2e8f0;
+            border: 4px solid #f3f3f3;
             border-top: 4px solid #667eea;
             border-radius: 50%;
-            margin: 0 auto 20px;
             animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
         }
         
         @keyframes spin {
@@ -214,10 +215,44 @@ def get_html_template():
             100% { transform: rotate(360deg); }
         }
         
+        .error-icon {
+            font-size: 4rem;
+            color: #e53e3e;
+            margin-bottom: 20px;
+        }
+        
+        .confidence-bar {
+            background: #e2e8f0;
+            border-radius: 10px;
+            height: 20px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            border-radius: 10px;
+            transition: width 0.5s ease;
+        }
+        
         @media (max-width: 768px) {
-            .card { padding: 25px; }
-            .form-row { grid-template-columns: 1fr; }
-            header h1 { font-size: 2rem; }
+            header h1 {
+                font-size: 2rem;
+            }
+            
+            .card {
+                padding: 25px;
+            }
+            
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .prediction-type {
+                font-size: 1.5rem;
+                padding: 12px 25px;
+            }
         }
     </style>
 </head>
@@ -225,159 +260,172 @@ def get_html_template():
     <div class="container">
         <header>
             <h1><i class="fas fa-heartbeat"></i> Calculadora de Miopatia</h1>
-            <p>Sistema de predição automática para diagnóstico de tipos de miopatia</p>
+            <p>Sistema de Predição: Estrutural vs Metabólico</p>
         </header>
-
+        
         <div class="card">
             <form id="myopathyForm">
                 <div class="form-grid">
-                    <!-- Valores de CPK -->
+                    <!-- Seção 1: Valores de CPK -->
                     <div class="form-section">
-                        <h3><i class="fas fa-chart-line"></i> Valores de CPK</h3>
+                        <h3><i class="fas fa-chart-line"></i>Níveis de CPK (U/L)</h3>
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="maior_cpk">Maior CPK</label>
-                                <input type="number" id="maior_cpk" name="maior_cpk" step="0.01" required>
-                                <small>Valor máximo de CPK registrado</small>
+                                <label for="maior_cpk">Maior CPK:</label>
+                                <input type="number" id="maior_cpk" name="maior_cpk" min="0" step="0.1" required>
+                                <small>Maior valor de CPK registrado</small>
                             </div>
                             <div class="form-group">
-                                <label for="menor_cpk">Menor CPK</label>
-                                <input type="number" id="menor_cpk" name="menor_cpk" step="0.01" required>
-                                <small>Valor mínimo de CPK registrado</small>
+                                <label for="menor_cpk">Menor CPK:</label>
+                                <input type="number" id="menor_cpk" name="menor_cpk" min="0" step="0.1" required>
+                                <small>Menor valor de CPK registrado</small>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Valores de Lactato -->
+                    
+                    <!-- Seção 2: Valores de Lactato -->
                     <div class="form-section">
-                        <h3><i class="fas fa-flask"></i> Valores de Lactato</h3>
+                        <h3><i class="fas fa-vial"></i>Níveis de Lactato (mmol/L)</h3>
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="maior_lactato">Maior Lactato</label>
-                                <input type="number" id="maior_lactato" name="maior_lactato" step="0.01" required>
-                                <small>Valor máximo de lactato registrado</small>
+                                <label for="maior_lactato">Maior Lactato:</label>
+                                <input type="number" id="maior_lactato" name="maior_lactato" min="0" step="0.1" required>
+                                <small>Maior valor de lactato registrado</small>
                             </div>
                             <div class="form-group">
-                                <label for="menor_lactato">Menor Lactato</label>
-                                <input type="number" id="menor_lactato" name="menor_lactato" step="0.01" required>
-                                <small>Valor mínimo de lactato registrado</small>
+                                <label for="menor_lactato">Menor Lactato:</label>
+                                <input type="number" id="menor_lactato" name="menor_lactato" min="0" step="0.1" required>
+                                <small>Menor valor de lactato registrado</small>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Sintomas Gerais -->
+                    
+                    <!-- Seção 3: Sintomas Principais -->
                     <div class="form-section">
-                        <h3><i class="fas fa-stethoscope"></i> Sintomas Gerais</h3>
+                        <h3><i class="fas fa-stethoscope"></i>Sintomas Clínicos</h3>
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="dor_presente">Dor Presente</label>
+                                <label for="dor_presente">Presença de Dor:</label>
                                 <select id="dor_presente" name="dor_presente" required>
-                                    <option value="">Selecione</option>
+                                    <option value="">Selecione...</option>
+                                    <option value="0">Não</option>
                                     <option value="1">Sim</option>
-                                    <option value="2">Não</option>
                                 </select>
+                                <small>Paciente relata dor muscular</small>
                             </div>
                             <div class="form-group">
-                                <label for="fadiga_status">Status de Fadiga</label>
-                                <select id="fadiga_status" name="fadiga_status" required>
-                                    <option value="">Selecione</option>
+                                <label for="mialgia_status">Status da Mialgia:</label>
+                                <select id="mialgia_status" name="mialgia_status" required>
+                                    <option value="">Selecione...</option>
+                                    <option value="0">Ausente</option>
                                     <option value="1">Presente</option>
-                                    <option value="2">Ausente</option>
                                 </select>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="caibra_status">Status de Cãibra</label>
-                                <select id="caibra_status" name="caibra_status" required>
-                                    <option value="">Selecione</option>
-                                    <option value="1">Presente</option>
-                                    <option value="2">Ausente</option>
-                                </select>
+                                <small>Presença de mialgia (dor muscular)</small>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Características da Mialgia -->
+                    
+                    <!-- Seção 4: Tipos de Mialgia -->
                     <div class="form-section">
-                        <h3><i class="fas fa-exclamation-triangle"></i> Características da Mialgia</h3>
+                        <h3><i class="fas fa-exclamation-triangle"></i>Classificação da Mialgia</h3>
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="mialgia_status">Status da Mialgia</label>
-                                <select id="mialgia_status" name="mialgia_status" required>
-                                    <option value="">Selecione</option>
-                                    <option value="1">Presente</option>
-                                    <option value="2">Ausente</option>
+                                <label for="mialgia_inicial_tipo">Tipo Inicial da Mialgia:</label>
+                                <select id="mialgia_inicial_tipo" name="mialgia_inicial_tipo" required>
+                                    <option value="">Selecione...</option>
+                                    <option value="0">Não se Aplica</option>
+                                    <option value="3">Tipo 3 - Leve/Localizada</option>
+                                    <option value="4">Tipo 4 - Moderada/Generalizada</option>
+                                    <option value="5">Tipo 5 - Intensa/Severa</option>
                                 </select>
+                                <small>Intensidade inicial da mialgia</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="mialgia_atual_tipo">Tipo Atual da Mialgia:</label>
+                                <select id="mialgia_atual_tipo" name="mialgia_atual_tipo" required>
+                                    <option value="">Selecione...</option>
+                                    <option value="0">Não se Aplica</option>
+                                    <option value="3">Tipo 3 - Leve/Localizada</option>
+                                    <option value="4">Tipo 4 - Moderada/Generalizada</option>
+                                    <option value="5">Tipo 5 - Intensa/Severa</option>
+                                </select>
+                                <small>Intensidade atual da mialgia</small>
                             </div>
                         </div>
+                    </div>
+                    
+                    <!-- Seção 5: Outros Sintomas -->
+                    <div class="form-section">
+                        <h3><i class="fas fa-user-md"></i>Sintomas Associados</h3>
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="mialgia_inicial_tipo">Tipo Inicial da Mialgia</label>
-                                <select id="mialgia_inicial_tipo" name="mialgia_inicial_tipo" required>
-                                    <option value="">Selecione</option>
-                                    <option value="3">Tipo 3 - Mialgia Leve/Localizada</option>
-                                    <option value="4">Tipo 4 - Mialgia Moderada/Generalizada</option>
-                                    <option value="5">Tipo 5 - Mialgia Intensa/Severa</option>
+                                <label for="fadiga_status">Presença de Fadiga:</label>
+                                <select id="fadiga_status" name="fadiga_status" required>
+                                    <option value="">Selecione...</option>
+                                    <option value="0">Ausente</option>
+                                    <option value="1">Presente</option>
                                 </select>
-                                <small>Classificação inicial da intensidade da dor muscular</small>
+                                <small>Fadiga muscular relatada pelo paciente</small>
                             </div>
                             <div class="form-group">
-                                <label for="mialgia_atual_tipo">Tipo Atual da Mialgia</label>
-                                <select id="mialgia_atual_tipo" name="mialgia_atual_tipo" required>
-                                    <option value="">Selecione</option>
-                                    <option value="3">Tipo 3 - Mialgia Leve/Localizada</option>
-                                    <option value="4">Tipo 4 - Mialgia Moderada/Generalizada</option>
-                                    <option value="5">Tipo 5 - Mialgia Intensa/Severa</option>
+                                <label for="caibra_status">Presença de Cãibras:</label>
+                                <select id="caibra_status" name="caibra_status" required>
+                                    <option value="">Selecione...</option>
+                                    <option value="0">Ausente</option>
+                                    <option value="1">Presente</option>
                                 </select>
-                                <small>Classificação atual da intensidade da dor muscular</small>
+                                <small>Cãibras musculares relatadas pelo paciente</small>
                             </div>
                         </div>
                     </div>
                 </div>
-
+                
                 <div class="button-container">
-                    <button type="submit" id="predictBtn">
+                    <button type="submit">
                         <i class="fas fa-calculator"></i>
-                        Calcular Diagnóstico
+                        Calcular Predição
                     </button>
                 </div>
             </form>
         </div>
-
-        <!-- Resultado -->
-        <div id="result" class="result-card" style="display: none;">
-            <div class="result-content">
-                <div class="result-icon">
-                    <i class="fas fa-check-circle"></i>
-                </div>
-                <h3>Resultado da Predição</h3>
-                <div class="prediction-result">
-                    <span class="prediction-type" id="predictionType"></span>
-                </div>
-                <div class="confidence-info">
-                    <span>Confiança: </span>
-                    <span class="confidence-value" id="confidenceValue"></span>
-                </div>
-            </div>
-        </div>
-
+        
         <!-- Loading -->
         <div id="loading" class="loading" style="display: none;">
             <div class="spinner"></div>
-            <p>Processando dados...</p>
+            <h3>Processando dados...</h3>
+            <p>Analisando parâmetros clínicos</p>
         </div>
-
-        <!-- Error -->
-        <div id="error" class="error-card" style="display: none;">
-            <div class="error-content">
-                <i class="fas fa-exclamation-circle"></i>
-                <h3>Erro no Processamento</h3>
-                <p id="errorMessage"></p>
+        
+        <!-- Resultado -->
+        <div id="result" class="result-card" style="display: none;">
+            <div class="result-icon">
+                <i class="fas fa-check-circle"></i>
             </div>
+            <h2>Resultado da Predição</h2>
+            <div class="prediction-type" id="predictionType">ESTRUTURAL</div>
+            <div class="confidence-bar">
+                <div class="confidence-fill" id="confidenceFill"></div>
+            </div>
+            <p><strong>Nível de Confiança:</strong> <span id="confidenceValue">0</span></p>
+            <p style="margin-top: 20px;">
+                <small>Esta predição é baseada em análise de padrões clínicos e laboratoriais. 
+                Sempre consulte um especialista para diagnóstico definitivo.</small>
+            </p>
+        </div>
+        
+        <!-- Erro -->
+        <div id="error" class="error-card" style="display: none;">
+            <div class="error-icon">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <h2>Erro na Predição</h2>
+            <p id="errorMessage">Ocorreu um erro no processamento.</p>
+            <button type="button" onclick="document.getElementById('error').style.display='none'">
+                <i class="fas fa-times"></i> Fechar
+            </button>
         </div>
     </div>
-
+    
     <script>
         document.getElementById('myopathyForm').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -389,7 +437,7 @@ def get_html_template():
             const formData = new FormData(this);
             
             try {
-                const response = await fetch('/predict', {
+                const response = await fetch('/api/predict', {
                     method: 'POST',
                     body: formData
                 });
@@ -401,6 +449,9 @@ def get_html_template():
                 if (data.success) {
                     document.getElementById('predictionType').textContent = data.prediction;
                     document.getElementById('confidenceValue').textContent = data.confidence + '%';
+                    
+                    // Atualizar barra de confiança
+                    document.getElementById('confidenceFill').style.width = data.confidence + '%';
                     
                     const predictionElement = document.getElementById('predictionType');
                     predictionElement.className = 'prediction-type ' + 
@@ -427,127 +478,182 @@ def predict_myopathy_type(data):
     Faz a predição do tipo de miopatia usando regras baseadas nos dados originais
     Análise baseada nos padrões encontrados no dataset
     """
-    
-    # Extrair valores
-    maior_cpk = data['Maior_Cpk']
-    menor_cpk = data['Menor_Cpk']
-    maior_lactato = data['Maior_Lactato']
-    menor_lactato = data['Menor_Lactato']
-    dor_presente = data['Dor_Presente']
-    mialgia_status = data['Mialgia_Status']
-    mialgia_inicial = data['Mialgia_Inicial_Tipo']
-    mialgia_atual = data['Mialgia_Atual_Tipo']
-    fadiga_status = data['Fadiga_Status']
-    caibra_status = data['Caibra_Status']
-    
-    # Calcular diferença de CPK
-    delta_cpk = maior_cpk - menor_cpk
-    
-    # Inicializar score (0 = mais metabólico, 100 = mais estrutural)
-    score = 50
-    confidence = 60  # Base confidence
-    
-    # Regras baseadas nos padrões do dataset
-    
-    # 1. Análise dos valores de CPK
-    if maior_cpk > 2000:
-        score += 25  # CPK muito alto sugere estrutural
-        confidence += 15
-    elif maior_cpk > 1000:
-        score += 15
-        confidence += 10
-    elif maior_cpk < 200:
-        score -= 20  # CPK baixo sugere metabólico
-        confidence += 10
-    
-    # 2. Análise da variação de CPK
-    if delta_cpk > 1000:
-        score += 20  # Grande variação sugere estrutural
-        confidence += 10
-    elif delta_cpk < 50:
-        score -= 15  # Pouca variação sugere metabólico
-        confidence += 5
-    
-    # 3. Análise dos valores de Lactato
-    if maior_lactato > 4.0:
-        score -= 25  # Lactato alto sugere metabólico
-        confidence += 15
-    elif maior_lactato > 3.0:
-        score -= 10
-        confidence += 5
-    elif maior_lactato < 2.0:
-        score += 10  # Lactato baixo sugere estrutural
-        confidence += 5
-    
-    # 4. Análise dos sintomas
-    if dor_presente == 1:  # Tem dor
-        if mialgia_status == 1:  # Tem mialgia
-            if mialgia_atual == 5:  # Mialgia intensa
-                score += 15
-                confidence += 10
-            elif mialgia_atual == 3:  # Mialgia leve
-                score -= 10
-                confidence += 5
-    
-    # 5. Análise da fadiga
-    if fadiga_status == 1:  # Tem fadiga
-        score -= 10  # Fadiga mais comum em metabólico
-        confidence += 5
-    
-    # 6. Análise das cãibras
-    if caibra_status == 1:  # Tem cãibras
-        score -= 15  # Cãibras mais comuns em metabólico
-        confidence += 10
-    
-    # 7. Padrões combinados
-    if maior_cpk > 1500 and maior_lactato < 3.0:
-        score += 20  # Padrão típico estrutural
-        confidence += 15
-    
-    if maior_lactato > 4.0 and fadiga_status == 1 and caibra_status == 1:
-        score -= 25  # Padrão típico metabólico
-        confidence += 20
-    
-    # Determinar resultado final
-    if score >= 50:
-        myopathy_type = 'Estrutural'
-        final_confidence = min(95, 50 + (score - 50) * 0.8 + (confidence - 60) * 0.6)
-    else:
-        myopathy_type = 'Metabólico'
-        final_confidence = min(95, 50 + (50 - score) * 0.8 + (confidence - 60) * 0.6)
-    
-    # Garantir confiança mínima
-    final_confidence = max(60, final_confidence)
-    
-    return myopathy_type, final_confidence
+    try:
+        # Extrair valores
+        maior_cpk = float(data['Maior_Cpk'])
+        menor_cpk = float(data['Menor_Cpk'])
+        maior_lactato = float(data['Maior_Lactato'])
+        menor_lactato = float(data['Menor_Lactato'])
+        dor_presente = int(data['Dor_Presente'])
+        mialgia_status = int(data['Mialgia_Status'])
+        mialgia_inicial = int(data['Mialgia_Inicial_Tipo'])
+        mialgia_atual = int(data['Mialgia_Atual_Tipo'])
+        fadiga_status = int(data['Fadiga_Status'])
+        caibra_status = int(data['Caibra_Status'])
+        
+        # Calcular diferença de CPK
+        delta_cpk = maior_cpk - menor_cpk
+        
+        # Inicializar score (0 = mais metabólico, 100 = mais estrutural)
+        score = 50
+        confidence = 60  # Base confidence
+        
+        # Regras baseadas nos padrões do dataset
+        
+        # 1. Análise dos valores de CPK
+        if maior_cpk > 2000:
+            score += 25  # CPK muito alto sugere estrutural
+            confidence += 15
+        elif maior_cpk > 1000:
+            score += 15
+            confidence += 10
+        elif maior_cpk < 200:
+            score -= 20  # CPK baixo sugere metabólico
+            confidence += 10
+        
+        # 2. Análise da variação de CPK
+        if delta_cpk > 1000:
+            score += 20  # Grande variação sugere estrutural
+            confidence += 10
+        elif delta_cpk < 50:
+            score -= 15  # Pouca variação sugere metabólico
+            confidence += 5
+        
+        # 3. Análise dos valores de Lactato
+        if maior_lactato > 4.0:
+            score -= 25  # Lactato alto sugere metabólico
+            confidence += 15
+        elif maior_lactato > 3.0:
+            score -= 10
+            confidence += 5
+        elif maior_lactato < 2.0:
+            score += 10  # Lactato baixo sugere estrutural
+            confidence += 5
+        
+        # 4. Análise dos sintomas
+        if dor_presente == 1:  # Tem dor
+            if mialgia_status == 1:  # Tem mialgia
+                if mialgia_atual == 5:  # Mialgia intensa
+                    score += 15
+                    confidence += 10
+                elif mialgia_atual == 3:  # Mialgia leve
+                    score -= 10
+                    confidence += 5
+        
+        # 5. Análise da fadiga
+        if fadiga_status == 1:  # Tem fadiga
+            score -= 10  # Fadiga mais comum em metabólico
+            confidence += 5
+        
+        # 6. Análise das cãibras
+        if caibra_status == 1:  # Tem cãibras
+            score -= 15  # Cãibras mais comuns em metabólico
+            confidence += 10
+        
+        # 7. Padrões combinados
+        if maior_cpk > 1500 and maior_lactato < 3.0:
+            score += 20  # Padrão típico estrutural
+            confidence += 15
+        
+        if maior_lactato > 4.0 and fadiga_status == 1 and caibra_status == 1:
+            score -= 25  # Padrão típico metabólico
+            confidence += 20
+        
+        # Determinar resultado final
+        if score >= 50:
+            myopathy_type = 'Estrutural'
+            final_confidence = min(95, 50 + (score - 50) * 0.8 + (confidence - 60) * 0.6)
+        else:
+            myopathy_type = 'Metabólico'
+            final_confidence = min(95, 50 + (50 - score) * 0.8 + (confidence - 60) * 0.6)
+        
+        # Garantir confiança mínima
+        final_confidence = max(60, final_confidence)
+        
+        return myopathy_type, final_confidence
+        
+    except Exception as e:
+        raise ValueError(f"Erro no cálculo da predição: {str(e)}")
 
 @app.route('/')
 def index():
-    return get_html_template()
-
-@app.route('/predict', methods=['POST'])
-def predict():
+    """Página principal"""
     try:
+        return get_html_template()
+    except Exception as e:
+        return f"Erro interno: {str(e)}", 500
+
+@app.route('/api/predict', methods=['POST'])
+def predict():
+    """Endpoint de predição"""
+    try:
+        # Verificar se há dados
+        if not request.form:
+            return jsonify({
+                'success': False,
+                'error': 'Nenhum dado recebido'
+            })
+        
         # Receber dados do formulário
-        data = {
-            'Maior_Cpk': float(request.form['maior_cpk']),
-            'Menor_Cpk': float(request.form['menor_cpk']),
-            'Maior_Lactato': float(request.form['maior_lactato']),
-            'Menor_Lactato': float(request.form['menor_lactato']),
-            'Dor_Presente': int(request.form['dor_presente']),
-            'Mialgia_Status': int(request.form['mialgia_status']),
-            'Mialgia_Inicial_Tipo': int(request.form['mialgia_inicial_tipo']),
-            'Mialgia_Atual_Tipo': int(request.form['mialgia_atual_tipo']),
-            'Fadiga_Status': int(request.form['fadiga_status']),
-            'Caibra_Status': int(request.form['caibra_status'])
-        }
+        data = {}
+        required_fields = [
+            'maior_cpk', 'menor_cpk', 'maior_lactato', 'menor_lactato',
+            'dor_presente', 'mialgia_status', 'mialgia_inicial_tipo',
+            'mialgia_atual_tipo', 'fadiga_status', 'caibra_status'
+        ]
+        
+        # Verificar campos obrigatórios
+        for field in required_fields:
+            if field not in request.form or request.form[field] == '':
+                return jsonify({
+                    'success': False,
+                    'error': f'Campo obrigatório não preenchido: {field}'
+                })
+        
+        # Converter e validar dados
+        try:
+            data = {
+                'Maior_Cpk': float(request.form['maior_cpk']),
+                'Menor_Cpk': float(request.form['menor_cpk']),
+                'Maior_Lactato': float(request.form['maior_lactato']),
+                'Menor_Lactato': float(request.form['menor_lactato']),
+                'Dor_Presente': int(request.form['dor_presente']),
+                'Mialgia_Status': int(request.form['mialgia_status']),
+                'Mialgia_Inicial_Tipo': int(request.form['mialgia_inicial_tipo']),
+                'Mialgia_Atual_Tipo': int(request.form['mialgia_atual_tipo']),
+                'Fadiga_Status': int(request.form['fadiga_status']),
+                'Caibra_Status': int(request.form['caibra_status'])
+            }
+        except (ValueError, TypeError) as e:
+            return jsonify({
+                'success': False,
+                'error': f'Erro na conversão dos dados: {str(e)}'
+            })
         
         # Validar dados básicos
+        if data['Maior_Cpk'] < 0 or data['Menor_Cpk'] < 0:
+            return jsonify({
+                'success': False,
+                'error': 'Valores de CPK não podem ser negativos'
+            })
+            
+        if data['Maior_Lactato'] < 0 or data['Menor_Lactato'] < 0:
+            return jsonify({
+                'success': False,
+                'error': 'Valores de Lactato não podem ser negativos'
+            })
+        
         if data['Maior_Cpk'] < data['Menor_Cpk']:
-            raise ValueError("Maior CPK não pode ser menor que Menor CPK")
+            return jsonify({
+                'success': False,
+                'error': 'Maior CPK não pode ser menor que Menor CPK'
+            })
         
         if data['Maior_Lactato'] < data['Menor_Lactato']:
-            raise ValueError("Maior Lactato não pode ser menor que Menor Lactato")
+            return jsonify({
+                'success': False,
+                'error': 'Maior Lactato não pode ser menor que Menor Lactato'
+            })
         
         # Fazer predição
         myopathy_type, confidence = predict_myopathy_type(data)
@@ -561,21 +667,49 @@ def predict():
     except ValueError as e:
         return jsonify({
             'success': False,
-            'error': f"Erro de validação: {str(e)}"
+            'error': str(e)
+        })
+    except Exception as e:
+        # Log do erro completo para debug
+        error_trace = traceback.format_exc()
+        print(f"Erro na predição: {error_trace}")
+        
+        return jsonify({
+            'success': False,
+            'error': f'Erro interno do servidor: {str(e)}'
+        })
+
+@app.route('/api/health')
+def health():
+    """Endpoint de saúde"""
+    try:
+        return jsonify({
+            'status': 'healthy', 
+            'message': 'Calculadora de Miopatia funcionando',
+            'version': '1.0.0'
         })
     except Exception as e:
         return jsonify({
-            'success': False,
-            'error': f"Erro no processamento: {str(e)}"
-        })
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+# Endpoint de compatibilidade
+@app.route('/predict', methods=['POST'])
+def predict_compat():
+    """Endpoint de compatibilidade - redireciona para /api/predict"""
+    return predict()
 
 @app.route('/health')
-def health():
-    return jsonify({'status': 'healthy', 'message': 'Calculadora de Miopatia funcionando'})
+def health_compat():
+    """Endpoint de compatibilidade - redireciona para /api/health"""
+    return health()
 
-# Para Vercel
+# Handler para Vercel
+def handler(event, context):
+    """Handler para AWS Lambda/Vercel"""
+    return app(event, context)
+
+# Para desenvolvimento local
 if __name__ == '__main__':
-    app.run(debug=True)
-else:
-    # Para Vercel serverless
-    app.wsgi_app = app 
+    app.run(debug=True, port=5000) 
